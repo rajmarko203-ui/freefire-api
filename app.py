@@ -68,13 +68,6 @@ def player():
     timeout=15
         )
             },
-            headers={
-    "x-api-key": FFC_API_KEY,
-    "User-Agent": "FreeFireInfoAPI/1.0"
-            }
-            },
-            timeout=15
-        )
 
         data = response.json()
 
