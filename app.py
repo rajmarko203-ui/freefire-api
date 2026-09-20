@@ -56,10 +56,17 @@ def player():
         url = "https://developers.freefirecommunity.com/api/v1/info"
 
         response = requests.get(
-            url,
-            params={
-                "uid": uid,
-                "region": region
+    url,
+    params={
+        "uid": uid,
+        "region": region
+    },
+    headers={
+        "x-api-key": FFC_API_KEY,
+        "User-Agent": "FreeFireInfoAPI/1.0"
+    },
+    timeout=15
+        )
             },
             headers={
     "x-api-key": FFC_API_KEY,
