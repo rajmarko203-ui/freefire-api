@@ -1,79 +1,72 @@
-from flask import Flask, request, jsonify
 import os
 import requests
-import secrets
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-API_KEY = os.environ.get("API_KEY")
-FFC_API_KEY = os.environ.get("FFC_API_KEY")
-
-if not API_KEY:
-    API_KEY = secrets.token_urlsafe(24)
+# Render Environment Variables
+FFC_API_KEY = os.getenv("FFC_API_KEY")
+PLAYER_API_URL = os.getenv("PLAYER_API_URL")
 
 
 @app.route("/")
 def home():
     return jsonify({
         "status": "online",
-        "message": "Free Fire Information API"
+        "message": "Free Fire Info API is running"
     })
 
 
-@app.route("/player")
-def player():
-    key = request.args.get("key")
-    uid = request.args.get("uid")
-    region = request.args.get("region", "IND").upper()
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok"
+    })
 
-    # আমাদের API key check
-    if key != API_KEY:
-        return jsonify({
-            "error": "Invalid API Key"
-        }), 401
 
-    if not uid:
-        return jsonify({
-            "error": "UID is required"
-        }), 400
-
-    if not uid.isdigit() or not 5 <= len(uid) <= 15:
-        return jsonify({
-            "error": "Invalid UID"
-        }), 400
-
-    if region not in ["IND", "SG", "BR"]:
-        return jsonify({
-            "error": "Invalid region. Use IND, SG or BR"
-        }), 400
-
+@app.route("/freefireinfo/<uid>")
+def player(uid):
+    # Check API key configuration
     if not FFC_API_KEY:
         return jsonify({
-            "error": "Player data source API key is not configured"
+            "error": "FFC_API_KEY is not configured on Render"
         }), 500
 
+    # Check upstream API URL
+    if not PLAYER_API_URL:
+        return jsonify({
+            "error": "PLAYER_API_URL is not configured on Render"
+        }), 500
+
+    region = "BD"
+
     try:
-        url = "https://developers.freefirecommunity.com/api/v1/info"
-
         response = requests.get(
-    url,
-    params={
-        "uid": uid,
-        "region": region
-    },
-    headers={
-        "x-api-key": FFC_API_KEY,
-        "User-Agent": "FreeFireInfoAPI/1.0"
-    },
-    timeout=15
-        )
+            PLAYER_API_URL,
+            params={
+                "uid": uid,
+                "region": region
             },
+            headers={
+                "x-api-key": FFC_API_KEY,
+                "User-Agent": "FreeFireInfoAPI/1.0"
+            },
+            timeout=15
+        )
 
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            return jsonify({
+                "error": "Upstream API returned invalid JSON",
+                "status_code": response.status_code,
+                "response": response.text[:500]
+            }), 502
 
         if response.status_code != 200:
             return jsonify({
                 "error": "Player data API error",
+                "status_code": response.status_code,
                 "details": data
             }), response.status_code
 
@@ -83,16 +76,32 @@ def player():
             "uid": uid,
             "nickname": basic.get("nickname"),
             "level": basic.get("level"),
-            "region": basic.get("region"),
+            "region": basic.get("region", region),
             "accountId": basic.get("accountId"),
             "data": data
         })
 
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Upstream API request timed out"
+        }), 504
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "error": "Request to upstream API failed",
+            "details": str(e)
+        }), 502
+
     except Exception as e:
         return jsonify({
-            "error": "Failed to fetch player data"
+            "error": "Internal server error",
+            "details": str(e)
         }), 500
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
